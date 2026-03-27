@@ -1,14 +1,22 @@
 .PHONY: help install dev build start clean \
        docker-build docker-up docker-down docker-logs docker-shell \
-       docker-clean docker-nuke db-push
+       docker-clean docker-nuke db-push docker-install
 
 # ──────────────────────────────────────────────
 #  linux-feed — Makefile
 # ──────────────────────────────────────────────
 
 APP_NAME    := linux-feed
-COMPOSE     := docker compose
 PORT        ?= 5000
+
+# Auto-detect: docker compose (v2 plugin) → docker-compose (standalone) → not found
+ifeq ($(shell docker compose version >/dev/null 2>&1 && echo ok),ok)
+  COMPOSE := docker compose
+else ifeq ($(shell docker-compose version >/dev/null 2>&1 && echo ok),ok)
+  COMPOSE := docker-compose
+else
+  COMPOSE := echo "\n  ✗ Docker is not installed.\n    Run 'make docker-install' or visit https://docs.docker.com/get-docker/\n" && exit 1; \#
+endif
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -18,7 +26,7 @@ help: ## Show this help
 #  Local development
 # ──────────────────────────────────────────────
 
-install: ## Install dependencies
+install: ## Install npm dependencies
 	npm ci
 
 dev: ## Start dev server (hot-reload)
@@ -37,7 +45,26 @@ clean: ## Remove build artifacts and node_modules
 	rm -rf dist node_modules .cache data.db data.db-shm data.db-wal
 
 # ──────────────────────────────────────────────
-#  Docker
+#  Docker — install
+# ──────────────────────────────────────────────
+
+docker-install: ## Install Docker Engine + Compose (Ubuntu/Debian)
+	@echo "── Installing Docker Engine ──"
+	sudo apt-get update
+	sudo apt-get install -y ca-certificates curl gnupg
+	sudo install -m 0755 -d /etc/apt/keyrings
+	curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+	sudo chmod a+r /etc/apt/keyrings/docker.gpg
+	echo "deb [arch=$$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $$(. /etc/os-release && echo $$VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+	sudo apt-get update
+	sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+	sudo usermod -aG docker $$USER
+	@echo ""
+	@echo "  ✓ Docker installed. Log out and back in (or run 'newgrp docker') for group changes to take effect."
+	@echo ""
+
+# ──────────────────────────────────────────────
+#  Docker — run
 # ──────────────────────────────────────────────
 
 docker-build: ## Build the Docker image
