@@ -10,7 +10,11 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=5000
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Set ONE of these in your .env file:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/articles"]
       interval: 30s

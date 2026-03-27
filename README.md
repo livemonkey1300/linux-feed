@@ -32,7 +32,7 @@ A terminal-themed news aggregator for Linux security and LLM/AI news, with AI-po
 
 - **Node.js** >= 18
 - **npm** (comes with Node)
-- An **Anthropic API key** (or compatible proxy) — set as `ANTHROPIC_API_KEY` env var
+- An LLM API key — one of: **Gemini** (free), Perplexity, OpenAI, or Anthropic
 
 ## Getting started
 
@@ -46,17 +46,17 @@ npm install
 
 ### 2. Set up environment
 
-The summarization feature requires an Anthropic API key:
+The summarization feature needs ONE of these API keys. Set whichever you have in a `.env` file (not committed to git):
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
+# Pick ONE — the app auto-detects which is set (checked in this order)
+GEMINI_API_KEY=your-key-here        # Google Gemini (free tier at aistudio.google.com)
+PERPLEXITY_API_KEY=pplx-...          # Perplexity
+OPENAI_API_KEY=sk-...                # OpenAI / GitHub Copilot
+ANTHROPIC_API_KEY=sk-ant-...         # Anthropic Claude
 ```
 
-You can also create a `.env` file in the project root (not committed to git):
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
+The easiest free option is **Gemini** — grab a key at [aistudio.google.com](https://aistudio.google.com/apikey).
 
 ### 3. Push the database schema
 
@@ -93,8 +93,8 @@ The production server runs on port 5000 by default.
 ### Quick start with Docker Compose
 
 ```bash
-# Create a .env with your API key
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+# Create a .env with your API key (pick one)
+echo "GEMINI_API_KEY=your-key" > .env
 
 # Build and start
 make up
@@ -127,11 +127,11 @@ make docker-nuke
 # Build
 docker build -t linux-feed .
 
-# Run
+# Run (pick whichever key you have)
 docker run -d \
   --name linux-feed \
   -p 5000:5000 \
-  -e ANTHROPIC_API_KEY="sk-ant-..." \
+  -e GEMINI_API_KEY="your-key" \
   -v feed-data:/app/data \
   linux-feed
 ```

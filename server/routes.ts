@@ -1,7 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import Anthropic from "@anthropic-ai/sdk";
 import Parser from "rss-parser";
 
 const parser = new Parser({
@@ -10,6 +9,135 @@ const parser = new Parser({
     "User-Agent": "LinuxFeedAggregator/1.0",
   },
 });
+
+// ──────────────────────────────────────────────
+//  Multi-provider LLM summarization
+//  Set ONE of these env vars:
+//    GEMINI_API_KEY      — Google Gemini (free tier available)
+//    PERPLEXITY_API_KEY  — Perplexity (OpenAI-compatible)
+//    OPENAI_API_KEY      — OpenAI / GitHub Copilot
+//    ANTHROPIC_API_KEY   — Anthropic Claude
+// ──────────────────────────────────────────────
+
+const SUMMARY_PROMPT = `You are a technical news summarizer for Linux sysadmins and DevOps engineers.
+
+Summarize this article in 3-5 bullet points. Be concise and technical. Focus on:
+- What happened / what is this about
+- Why it matters for Linux admins or AI/ML practitioners
+- Any action items or key takeaways
+
+Return ONLY the bullet points as markdown, no intro text. Each bullet should be 1-2 sentences max.`;
+
+function detectProvider(): {
+  name: string;
+  url: string;
+  model: string;
+  apiKey: string;
+  buildBody: (prompt: string) => object;
+  extractText: (json: any) => string;
+} {
+  if (process.env.GEMINI_API_KEY) {
+    return {
+      name: "Gemini",
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      model: "gemini-2.0-flash",
+      apiKey: process.env.GEMINI_API_KEY,
+      buildBody: (prompt) => ({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 1024 },
+      }),
+      extractText: (json) =>
+        json?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "Unable to generate summary.",
+    };
+  }
+
+  if (process.env.PERPLEXITY_API_KEY) {
+    return {
+      name: "Perplexity",
+      url: "https://api.perplexity.ai/chat/completions",
+      model: "sonar",
+      apiKey: process.env.PERPLEXITY_API_KEY,
+      buildBody: (prompt) => ({
+        model: "sonar",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      extractText: (json) =>
+        json?.choices?.[0]?.message?.content ||
+        "Unable to generate summary.",
+    };
+  }
+
+  if (process.env.OPENAI_API_KEY) {
+    return {
+      name: "OpenAI",
+      url: "https://api.openai.com/v1/chat/completions",
+      model: "gpt-4o-mini",
+      apiKey: process.env.OPENAI_API_KEY,
+      buildBody: (prompt) => ({
+        model: "gpt-4o-mini",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      extractText: (json) =>
+        json?.choices?.[0]?.message?.content ||
+        "Unable to generate summary.",
+    };
+  }
+
+  if (process.env.ANTHROPIC_API_KEY) {
+    return {
+      name: "Anthropic",
+      url: "https://api.anthropic.com/v1/messages",
+      model: "claude-3-5-haiku-latest",
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      buildBody: (prompt) => ({
+        model: "claude-3-5-haiku-latest",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      extractText: (json) =>
+        json?.content?.[0]?.text || "Unable to generate summary.",
+    };
+  }
+
+  throw new Error(
+    "No LLM API key configured. Set one of: GEMINI_API_KEY, PERPLEXITY_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY",
+  );
+}
+
+async function summarizeWithLLM(articlePrompt: string): Promise<string> {
+  const provider = detectProvider();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  // Gemini uses key in URL, others use Authorization header
+  if (provider.name === "Anthropic") {
+    headers["x-api-key"] = provider.apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+  } else if (provider.name !== "Gemini") {
+    headers["Authorization"] = `Bearer ${provider.apiKey}`;
+  }
+
+  console.log(`Summarizing with ${provider.name} (${provider.model})...`);
+
+  const res = await fetch(provider.url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(provider.buildBody(articlePrompt)),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`${provider.name} API error ${res.status}: ${errText}`);
+  }
+
+  const json = await res.json();
+  return provider.extractText(json);
+}
 
 // RSS feeds for Linux security and LLM news
 const FEEDS = [
@@ -70,10 +198,9 @@ async function fetchAllFeeds() {
   for (const feed of FEEDS) {
     try {
       const parsed = await parser.parseURL(feed.url);
-      const items = (parsed.items || []).slice(0, 15); // limit per source
+      const items = (parsed.items || []).slice(0, 15);
       for (const item of items) {
         if (!item.title || !item.link) continue;
-        // Strip HTML from content snippet
         const rawSnippet =
           item.contentSnippet || item.content || item.summary || "";
         const snippet = rawSnippet
@@ -101,6 +228,16 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
+  // Show which LLM provider is configured on startup
+  app.get("/api/status", (_req, res) => {
+    try {
+      const provider = detectProvider();
+      res.json({ provider: provider.name, model: provider.model });
+    } catch {
+      res.json({ provider: null, error: "No API key configured" });
+    }
+  });
+
   // Fetch and store articles from RSS feeds
   app.post("/api/feeds/refresh", async (_req, res) => {
     try {
@@ -131,7 +268,6 @@ export async function registerRoutes(
     const articles = category
       ? storage.getArticlesByCategory(category)
       : storage.getArticles();
-    // Attach summary status
     const withSummary = articles.map((a) => ({
       ...a,
       hasSummary: !!storage.getSummaryByArticleId(a.id),
@@ -148,47 +284,25 @@ export async function registerRoutes(
     res.json({ ...article, summary: summary?.summary || null });
   });
 
-  // Summarize an article using LLM
+  // Summarize an article using whichever LLM is configured
   app.post("/api/articles/:id/summarize", async (req, res) => {
     const id = parseInt(req.params.id);
     const article = storage.getArticleById(id);
     if (!article) return res.status(404).json({ error: "Article not found" });
 
-    // Check if already summarized
     const existing = storage.getSummaryByArticleId(id);
     if (existing) {
       return res.json({ summary: existing.summary });
     }
 
     try {
-      const client = new Anthropic();
-
-      const message = await client.messages.create({
-        model: "gemini_3_flash",
-        max_tokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content: `You are a technical news summarizer for Linux sysadmins and DevOps engineers.
-
-Summarize this article in 3-5 bullet points. Be concise and technical. Focus on:
-- What happened / what is this about
-- Why it matters for Linux admins or AI/ML practitioners
-- Any action items or key takeaways
+      const prompt = `${SUMMARY_PROMPT}
 
 Article title: ${article.title}
 Source: ${article.source}
-Content: ${article.snippet || "No preview available — summarize based on the title and source."}
+Content: ${article.snippet || "No preview available — summarize based on the title and source."}`;
 
-Return ONLY the bullet points as markdown, no intro text. Each bullet should be 1-2 sentences max.`,
-          },
-        ],
-      });
-
-      const summaryText =
-        message.content[0].type === "text"
-          ? message.content[0].text
-          : "Unable to generate summary.";
+      const summaryText = await summarizeWithLLM(prompt);
 
       const saved = storage.createSummary({
         articleId: id,
@@ -199,7 +313,9 @@ Return ONLY the bullet points as markdown, no intro text. Each bullet should be 
       res.json({ summary: saved.summary });
     } catch (err) {
       console.error("Summarization error:", err);
-      res.status(422).json({ error: "Failed to summarize article" });
+      const message =
+        err instanceof Error ? err.message : "Failed to summarize article";
+      res.status(422).json({ error: message });
     }
   });
 
