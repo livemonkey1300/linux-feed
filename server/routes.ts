@@ -39,10 +39,10 @@ function detectProvider(): {
   extractText: (json: any) => string;
 } {
   if (process.env.GEMINI_API_KEY) {
-    // gemini-2.0-flash-lite is the cheapest model:
-    //   $0.075 / 1M input tokens, $0.30 / 1M output tokens
-    // A typical summary costs ~$0.0001 (fraction of a cent)
-    const model = process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
+    // gemini-2.5-flash-lite is the cheapest available model:
+    //   $0.10 / 1M input tokens, $0.40 / 1M output tokens
+    //   Free tier: 30 req/min, 1500 req/day
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
     return {
       name: "Gemini",
       url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
