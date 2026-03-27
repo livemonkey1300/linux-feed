@@ -2,6 +2,20 @@
 
 This guide documents the complete transformation of the development environment, moving from a standard Bash setup to a high-performance, AI-powered Zsh and Neovim workflow.
 
+## ⚡ Quick Start (One-Click Setup)
+
+To replicate this entire setup on any **Ubuntu, Debian, or Fedora** machine, run the following command:
+
+```bash
+curl -LO https://raw.githubusercontent.com/livemonkey1300/linux-feed/main/setup_terminal.sh && bash setup_terminal.sh
+```
+
+The script automatically detects your OS and handles:
+-   Installing dependencies via `apt` (Debian/Ubuntu) or `dnf` (Fedora).
+-   Upgrading Neovim to the latest version.
+-   Configuring Zsh, Oh My Zsh, and all high-speed TUI tools.
+-   Setting up the AI-powered Neovim configuration.
+
 ## 🛠️ Core Shell: Zsh + Oh My Zsh
 
 The shell has been upgraded to **Zsh** with the **Oh My Zsh** framework for better productivity and extensibility.
