@@ -20,6 +20,8 @@ import {
   Loader2,
   ArrowLeft,
   BookOpen,
+  Swords,
+  Wrench,
   X,
 } from "lucide-react";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -294,21 +296,20 @@ function ArticleReader({
                     </span>
                   </>
                 )}
-                {articleMeta.category === "security" ? (
-                  <Badge
-                    variant="secondary"
-                    className="text-[9px] h-4 px-1.5 bg-yellow-500/10 text-yellow-500 border-0"
-                  >
-                    security
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant="secondary"
-                    className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border-0"
-                  >
-                    llm / ai
-                  </Badge>
-                )}
+                <Badge
+                  variant="secondary"
+                  className={`text-[9px] h-4 px-1.5 border-0 ${
+                    articleMeta.category === "security"
+                      ? "bg-yellow-500/10 text-yellow-500"
+                      : articleMeta.category === "military"
+                        ? "bg-orange-400/10 text-orange-400"
+                        : articleMeta.category === "devops"
+                          ? "bg-blue-400/10 text-blue-400"
+                          : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  {articleMeta.category === "llm" ? "ai" : articleMeta.category}
+                </Badge>
               </div>
 
               {content?.content ? (
@@ -439,7 +440,7 @@ export default function Home() {
               </h1>
             </div>
             <span className="text-[10px] text-muted-foreground tracking-widest uppercase hidden sm:inline">
-              security + llm news
+              security + devops + military + ai
             </span>
           </div>
           <Button
@@ -460,7 +461,7 @@ export default function Home() {
 
       <div className="max-w-6xl mx-auto px-4 py-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
-          <TabsList className="bg-card border border-border h-8">
+          <TabsList className="bg-card border border-border h-8 flex-wrap">
             <TabsTrigger
               value="all"
               className="text-xs h-6 px-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
@@ -483,7 +484,23 @@ export default function Home() {
               data-testid="tab-llm"
             >
               <Brain className="h-3 w-3 mr-1.5" />
-              LLM / AI
+              AI
+            </TabsTrigger>
+            <TabsTrigger
+              value="military"
+              className="text-xs h-6 px-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              data-testid="tab-military"
+            >
+              <Swords className="h-3 w-3 mr-1.5" />
+              Military
+            </TabsTrigger>
+            <TabsTrigger
+              value="devops"
+              className="text-xs h-6 px-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              data-testid="tab-devops"
+            >
+              <Wrench className="h-3 w-3 mr-1.5" />
+              DevOps
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -532,6 +549,10 @@ export default function Home() {
                     <div className="mt-0.5 shrink-0">
                       {article.category === "security" ? (
                         <Shield className="h-3.5 w-3.5 text-yellow-500/80" />
+                      ) : article.category === "military" ? (
+                        <Swords className="h-3.5 w-3.5 text-orange-400/80" />
+                      ) : article.category === "devops" ? (
+                        <Wrench className="h-3.5 w-3.5 text-blue-400/80" />
                       ) : (
                         <Brain className="h-3.5 w-3.5 text-primary/80" />
                       )}

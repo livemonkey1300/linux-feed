@@ -146,9 +146,9 @@ async function summarizeWithLLM(articlePrompt: string): Promise<string> {
   return provider.extractText(json);
 }
 
-// RSS feeds for Linux security and LLM news
+// RSS feeds organized by category
 const FEEDS = [
-  // Linux Security
+  // ── Security ──
   {
     url: "https://www.bleepingcomputer.com/feed/",
     source: "BleepingComputer",
@@ -160,16 +160,17 @@ const FEEDS = [
     category: "security",
   },
   {
-    url: "https://www.openwall.com/lists/oss-security/rss",
-    source: "oss-security",
-    category: "security",
-  },
-  {
     url: "https://lwn.net/headlines/rss",
     source: "LWN.net",
     category: "security",
   },
-  // LLM / AI News
+  {
+    url: "https://www.cshub.com/rss/articles",
+    source: "Cyber Security Hub",
+    category: "security",
+  },
+
+  // ── LLM / AI ──
   {
     url: "https://blog.google/technology/ai/rss/",
     source: "Google AI Blog",
@@ -189,6 +190,60 @@ const FEEDS = [
     url: "https://feeds.arstechnica.com/arstechnica/technology-lab",
     source: "Ars Technica",
     category: "llm",
+  },
+
+  // ── Canadian Military & Defence ──
+  {
+    url: "https://vanguardcanada.com/feed/",
+    source: "Vanguard Canada",
+    category: "military",
+  },
+  {
+    url: "https://milnewsca.wordpress.com/feed/",
+    source: "MILNEWS.ca",
+    category: "military",
+  },
+  {
+    url: "https://canadianarmytoday.com/feed/",
+    source: "Canadian Army Today",
+    category: "military",
+  },
+  {
+    url: "https://www.canada.ca/en/department-national-defence/news.atom.xml",
+    source: "DND Canada",
+    category: "military",
+  },
+
+  // ── DevOps / IaC ──
+  {
+    url: "https://devops.com/feed/",
+    source: "DevOps.com",
+    category: "devops",
+  },
+  {
+    url: "https://www.hashicorp.com/blog/feed.xml",
+    source: "HashiCorp",
+    category: "devops",
+  },
+  {
+    url: "https://kubernetes.io/feed.xml",
+    source: "Kubernetes Blog",
+    category: "devops",
+  },
+  {
+    url: "https://blog.gruntwork.io/feed",
+    source: "Gruntwork",
+    category: "devops",
+  },
+  {
+    url: "https://www.ansible.com/blog/rss.xml",
+    source: "Ansible Blog",
+    category: "devops",
+  },
+  {
+    url: "https://devblogs.microsoft.com/devops/feed/",
+    source: "Azure DevOps Blog",
+    category: "devops",
   },
 ];
 
