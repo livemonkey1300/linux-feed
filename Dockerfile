@@ -21,9 +21,10 @@ WORKDIR /app
 
 RUN apk add --no-cache tini
 
-# Copy built output
+# Copy built output and lockfile
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/package-lock.json ./
 COPY --from=builder /app/drizzle.config.ts ./
 COPY --from=builder /app/shared ./shared
 
