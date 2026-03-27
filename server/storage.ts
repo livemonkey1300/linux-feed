@@ -9,8 +9,14 @@ import {
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, desc } from "drizzle-orm";
+import path from "path";
+import fs from "fs";
 
-const sqlite = new Database("data.db");
+// Use /app/data in Docker (volume-mounted), otherwise local directory
+const dataDir = fs.existsSync("/app/data") ? "/app/data" : ".";
+const dbPath = path.join(dataDir, "data.db");
+
+const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 
 export const db = drizzle(sqlite);

@@ -5,6 +5,7 @@ A terminal-themed news aggregator for Linux security and LLM/AI news, with AI-po
 ![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
 
 ## What it does
 
@@ -86,6 +87,78 @@ npm start
 ```
 
 The production server runs on port 5000 by default.
+
+## Docker
+
+### Quick start with Docker Compose
+
+```bash
+# Create a .env with your API key
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+
+# Build and start
+make up
+
+# Or without make:
+docker compose up -d --build
+```
+
+The app will be running at **http://localhost:5000**. SQLite data is persisted in a Docker volume (`feed-data`).
+
+### Docker commands
+
+```bash
+# View logs
+make docker-logs
+
+# Open a shell in the container
+make docker-shell
+
+# Stop the container
+make down
+
+# Full teardown (remove images + volumes + data)
+make docker-nuke
+```
+
+### Standalone Docker (no Compose)
+
+```bash
+# Build
+docker build -t linux-feed .
+
+# Run
+docker run -d \
+  --name linux-feed \
+  -p 5000:5000 \
+  -e ANTHROPIC_API_KEY="sk-ant-..." \
+  -v feed-data:/app/data \
+  linux-feed
+```
+
+## Makefile reference
+
+Run `make help` to see all targets:
+
+| Target | Description |
+|--------|-------------|
+| `make install` | Install npm dependencies |
+| `make dev` | Start dev server with hot-reload |
+| `make build` | Build for production |
+| `make start` | Build and start production server |
+| `make db-push` | Push DB schema to SQLite |
+| `make clean` | Remove build artifacts and node_modules |
+| `make up` | Build Docker image and start container |
+| `make down` | Stop container |
+| `make docker-build` | Build the Docker image |
+| `make docker-up` | Start containers (detached) |
+| `make docker-down` | Stop containers |
+| `make docker-logs` | Tail container logs |
+| `make docker-shell` | Shell into running container |
+| `make docker-restart` | Restart the container |
+| `make docker-status` | Show container status and health |
+| `make docker-clean` | Stop and remove images |
+| `make docker-nuke` | Full teardown — containers, images, volumes |
 
 ## Project structure
 
