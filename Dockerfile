@@ -12,7 +12,6 @@ RUN npm ci
 COPY . .
 
 RUN npm run build
-RUN npx drizzle-kit push
 
 # ---- Production stage ----
 FROM node:20-alpine

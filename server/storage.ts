@@ -19,6 +19,27 @@ const dbPath = path.join(dataDir, "data.db");
 const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 
+// Auto-create tables if they don't exist (no need for drizzle-kit push at runtime)
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    link TEXT NOT NULL UNIQUE,
+    source TEXT NOT NULL,
+    category TEXT NOT NULL,
+    snippet TEXT,
+    published_at TEXT,
+    fetched_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    article_id INTEGER NOT NULL REFERENCES articles(id),
+    summary TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+`);
+console.log(`Database initialized at ${dbPath}`);
+
 export const db = drizzle(sqlite);
 
 export interface IStorage {
