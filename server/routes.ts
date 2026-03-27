@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import Parser from "rss-parser";
+import { extract } from "@extractus/article-extractor";
 
 const parser = new Parser({
   timeout: 15000,
@@ -339,6 +340,53 @@ Content: ${article.snippet || "No preview available — summarize based on the t
       const message =
         err instanceof Error ? err.message : "Failed to summarize article";
       res.status(422).json({ error: message });
+    }
+  });
+
+  // Fetch full article content from its URL
+  app.get("/api/articles/:id/content", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const article = storage.getArticleById(id);
+    if (!article) return res.status(404).json({ error: "Article not found" });
+
+    try {
+      console.log(`Extracting content from ${article.link}...`);
+      const data = await extract(article.link, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        },
+      });
+
+      if (!data) {
+        return res.json({
+          title: article.title,
+          content: null,
+          author: null,
+          published: article.publishedAt,
+          url: article.link,
+        });
+      }
+
+      res.json({
+        title: data.title || article.title,
+        content: data.content || null,
+        author: data.author || null,
+        published: data.published || article.publishedAt,
+        url: article.link,
+        source: article.source,
+      });
+    } catch (err) {
+      console.error("Content extraction error:", err);
+      // Fall back — return article metadata without content
+      res.json({
+        title: article.title,
+        content: null,
+        author: null,
+        published: article.publishedAt,
+        url: article.link,
+        source: article.source,
+      });
     }
   });
 

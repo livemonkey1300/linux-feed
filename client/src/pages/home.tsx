@@ -18,6 +18,8 @@ import {
   Rss,
   ChevronRight,
   Loader2,
+  ArrowLeft,
+  BookOpen,
   X,
 } from "lucide-react";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -32,6 +34,15 @@ interface Article {
   publishedAt: string | null;
   fetchedAt: string;
   hasSummary: boolean;
+}
+
+interface ArticleContent {
+  title: string;
+  content: string | null;
+  author: string | null;
+  published: string | null;
+  url: string;
+  source: string;
 }
 
 function timeAgo(dateStr: string | null): string {
@@ -72,14 +83,287 @@ function ArticleSkeleton() {
   );
 }
 
+// ── Article Reader View ──
+function ArticleReader({
+  articleId,
+  articleMeta,
+  onBack,
+}: {
+  articleId: number;
+  articleMeta: Article;
+  onBack: () => void;
+}) {
+  const [summaryText, setSummaryText] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+
+  // Fetch article content
+  const { data: content, isLoading: contentLoading } =
+    useQuery<ArticleContent>({
+      queryKey: ["/api/articles", articleId, "content"],
+      queryFn: async () => {
+        const res = await apiRequest(
+          "GET",
+          `/api/articles/${articleId}/content`,
+        );
+        return res.json();
+      },
+    });
+
+  // Summarize mutation
+  const summarizeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        "POST",
+        `/api/articles/${articleId}/summarize`,
+      );
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setSummaryText(data.summary);
+      setShowSummary(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/articles"] });
+    },
+  });
+
+  function handleSummarize() {
+    setShowSummary(true);
+    setSummaryText(null);
+    // Check for cached summary first
+    apiRequest("GET", `/api/articles/${articleId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.summary) {
+          setSummaryText(data.summary);
+        } else {
+          summarizeMutation.mutate();
+        }
+      });
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Reader toolbar */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          className="text-xs gap-1.5 text-muted-foreground"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to feed
+        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSummarize}
+            disabled={summarizeMutation.isPending}
+            className="text-xs gap-1.5"
+            data-testid="button-summarize"
+          >
+            {summarizeMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            Summarize
+          </Button>
+          <a
+            href={articleMeta.link}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs gap-1.5"
+              data-testid="button-open-original"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Original
+            </Button>
+          </a>
+        </div>
+      </div>
+
+      {/* AI Summary (collapsible) */}
+      {showSummary && (
+        <Card className="bg-primary/5 border-primary/20 overflow-hidden">
+          <div className="px-4 py-2 border-b border-primary/10 flex items-center justify-between">
+            <span className="text-[11px] text-primary tracking-wide uppercase flex items-center gap-1.5 font-medium">
+              <Sparkles className="h-3 w-3" />
+              AI Summary
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-5 w-5 p-0 text-muted-foreground"
+              onClick={() => setShowSummary(false)}
+              data-testid="button-close-summary"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+          <div className="px-4 py-3">
+            {!summaryText && summarizeMutation.isPending ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-primary">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Generating summary...
+                </div>
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-5/6" />
+                <Skeleton className="h-3 w-4/5" />
+              </div>
+            ) : summarizeMutation.isError && !summaryText ? (
+              <p className="text-xs text-destructive">
+                {summarizeMutation.error?.message ||
+                  "Failed to generate summary."}
+              </p>
+            ) : summaryText ? (
+              <div className="text-xs text-foreground/90 leading-relaxed space-y-1">
+                {summaryText.split("\n").map((line, i) => {
+                  const trimmed = line.trim();
+                  if (!trimmed) return null;
+                  if (
+                    trimmed.startsWith("- ") ||
+                    trimmed.startsWith("• ")
+                  ) {
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2 py-0.5"
+                      >
+                        <span className="text-primary mt-px shrink-0">
+                          ›
+                        </span>
+                        <span>{trimmed.slice(2)}</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <p key={i} className="py-0.5">
+                      {trimmed}
+                    </p>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </Card>
+      )}
+
+      {/* Article content */}
+      <Card className="bg-card border-border overflow-hidden">
+        <div className="p-5 sm:p-6">
+          {contentLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-6 w-3/4" />
+              <Skeleton className="h-3 w-1/3" />
+              <div className="space-y-2 mt-6">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-5/6" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-3/4" />
+              </div>
+            </div>
+          ) : (
+            <>
+              <h1 className="text-base sm:text-lg font-bold text-foreground leading-snug mb-3">
+                {content?.title || articleMeta.title}
+              </h1>
+              <div className="flex items-center gap-3 mb-5 text-[11px] text-muted-foreground">
+                <SourceBadge source={articleMeta.source} />
+                {content?.author && (
+                  <>
+                    <span>·</span>
+                    <span>{content.author}</span>
+                  </>
+                )}
+                {articleMeta.publishedAt && (
+                  <>
+                    <span>·</span>
+                    <span className="flex items-center gap-0.5">
+                      <Clock className="h-2.5 w-2.5" />
+                      {timeAgo(articleMeta.publishedAt)}
+                    </span>
+                  </>
+                )}
+                {articleMeta.category === "security" ? (
+                  <Badge
+                    variant="secondary"
+                    className="text-[9px] h-4 px-1.5 bg-yellow-500/10 text-yellow-500 border-0"
+                  >
+                    security
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="secondary"
+                    className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border-0"
+                  >
+                    llm / ai
+                  </Badge>
+                )}
+              </div>
+
+              {content?.content ? (
+                <article
+                  className="prose prose-invert prose-sm max-w-none
+                    prose-headings:text-foreground prose-headings:font-semibold prose-headings:text-sm
+                    prose-p:text-foreground/85 prose-p:text-[13px] prose-p:leading-relaxed
+                    prose-a:text-primary prose-a:no-underline hover:prose-a:underline
+                    prose-strong:text-foreground
+                    prose-img:rounded prose-img:border prose-img:border-border
+                    prose-blockquote:border-primary/30 prose-blockquote:text-muted-foreground
+                    prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[12px]
+                    prose-pre:bg-muted prose-pre:border prose-pre:border-border
+                    prose-li:text-foreground/85 prose-li:text-[13px]"
+                  dangerouslySetInnerHTML={{ __html: content.content }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <BookOpen className="h-8 w-8 mb-3 opacity-20" />
+                  <p className="text-xs text-center mb-3">
+                    Could not extract article content.
+                  </p>
+                  <a
+                    href={articleMeta.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="text-xs gap-1.5"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Read on {articleMeta.source}
+                    </Button>
+                  </a>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── Main Page ──
 export default function Home() {
   const [activeTab, setActiveTab] = useState<string>("all");
-  const [selectedArticle, setSelectedArticle] = useState<number | null>(null);
-  const [summaryText, setSummaryText] = useState<string | null>(null);
+  const [readingArticleId, setReadingArticleId] = useState<number | null>(
+    null,
+  );
 
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
-  // Auto-refresh feeds on first load
   const refreshMutation = useMutation({
     mutationFn: async () => {
       setRefreshError(null);
@@ -99,28 +383,11 @@ export default function Home() {
     },
   });
 
-  // Fetch articles
   const { data: articles, isLoading } = useQuery<Article[]>({
     queryKey: ["/api/articles"],
     staleTime: 60000,
   });
 
-  // Summarize mutation
-  const summarizeMutation = useMutation({
-    mutationFn: async (articleId: number) => {
-      const res = await apiRequest(
-        "POST",
-        `/api/articles/${articleId}/summarize`,
-      );
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setSummaryText(data.summary);
-      queryClient.invalidateQueries({ queryKey: ["/api/articles"] });
-    },
-  });
-
-  // Auto-refresh on mount
   useEffect(() => {
     refreshMutation.mutate();
   }, []);
@@ -129,26 +396,39 @@ export default function Home() {
     activeTab === "all" ? true : a.category === activeTab,
   );
 
-  const selectedArticleData = articles?.find((a) => a.id === selectedArticle);
+  const readingArticleMeta = articles?.find((a) => a.id === readingArticleId);
 
-  function handleSummarize(articleId: number) {
-    setSelectedArticle(articleId);
-    setSummaryText(null);
-    // First try to get cached summary
-    apiRequest("GET", `/api/articles/${articleId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.summary) {
-          setSummaryText(data.summary);
-        } else {
-          summarizeMutation.mutate(articleId);
-        }
-      });
+  // If reading an article, show the reader
+  if (readingArticleId && readingArticleMeta) {
+    return (
+      <div className="min-h-screen bg-background scanlines">
+        <header className="border-b border-border sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
+          <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Terminal className="h-5 w-5 text-primary" />
+              <h1 className="text-sm font-bold tracking-tight">
+                <span className="text-primary">$</span> linux-feed
+              </h1>
+            </div>
+          </div>
+        </header>
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <ArticleReader
+            articleId={readingArticleId}
+            articleMeta={readingArticleMeta}
+            onBack={() => setReadingArticleId(null)}
+          />
+        </div>
+        <footer className="border-t border-border mt-8 py-4 text-center">
+          <PerplexityAttribution />
+        </footer>
+      </div>
+    );
   }
 
+  // Feed list view
   return (
     <div className="min-h-screen bg-background scanlines">
-      {/* Header */}
       <header className="border-b border-border sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -162,32 +442,24 @@ export default function Home() {
               security + llm news
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => refreshMutation.mutate()}
-              disabled={refreshMutation.isPending}
-              data-testid="button-refresh"
-              className="text-xs gap-1.5"
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`}
-              />
-              <span className="hidden sm:inline">Refresh</span>
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+            data-testid="button-refresh"
+            className="text-xs gap-1.5"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`}
+            />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
         </div>
       </header>
 
-      {/* Main content */}
       <div className="max-w-6xl mx-auto px-4 py-4">
-        {/* Tabs */}
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="mb-4"
-        >
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
           <TabsList className="bg-card border border-border h-8">
             <TabsTrigger
               value="all"
@@ -216,7 +488,6 @@ export default function Home() {
           </TabsList>
         </Tabs>
 
-        {/* Error banner */}
         {refreshError && (
           <div className="mb-4 px-3 py-2 rounded border border-destructive/30 bg-destructive/10 text-destructive text-xs flex items-center gap-2">
             <span>&#x26A0;</span>
@@ -233,207 +504,87 @@ export default function Home() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          {/* Article list */}
-          <div className="lg:col-span-3">
-            <Card className="bg-card border-border overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-                <span className="text-[11px] text-muted-foreground tracking-wide uppercase">
-                  Feed
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {filteredArticles?.length || 0} articles
-                </span>
-              </div>
-              <ScrollArea className="h-[calc(100vh-180px)]">
-                {isLoading || refreshMutation.isPending ? (
-                  <div>
-                    {Array.from({ length: 8 }).map((_, i) => (
-                      <ArticleSkeleton key={i} />
-                    ))}
-                  </div>
-                ) : filteredArticles && filteredArticles.length > 0 ? (
-                  filteredArticles.map((article) => (
-                    <div
-                      key={article.id}
-                      className={`p-3 border-b border-border transition-colors cursor-pointer hover:bg-accent/50 ${
-                        selectedArticle === article.id
-                          ? "bg-accent/70"
-                          : ""
-                      }`}
-                      onClick={() => handleSummarize(article.id)}
-                      data-testid={`article-card-${article.id}`}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <div className="mt-0.5 shrink-0">
-                          {article.category === "security" ? (
-                            <Shield className="h-3.5 w-3.5 text-yellow-500/80" />
-                          ) : (
-                            <Brain className="h-3.5 w-3.5 text-primary/80" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-xs font-medium leading-snug text-foreground line-clamp-2">
-                            {article.title}
-                          </h3>
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <SourceBadge source={article.source} />
-                            {article.publishedAt && (
-                              <>
-                                <span className="text-[10px] text-muted-foreground">
-                                  ·
-                                </span>
-                                <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                                  <Clock className="h-2.5 w-2.5" />
-                                  {timeAgo(article.publishedAt)}
-                                </span>
-                              </>
-                            )}
-                            {article.hasSummary && (
-                              <Badge
-                                variant="secondary"
-                                className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border-0"
-                              >
-                                summarized
-                              </Badge>
-                            )}
-                          </div>
-                          {article.snippet && (
-                            <p className="text-[11px] text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
-                              {article.snippet}
-                            </p>
-                          )}
-                        </div>
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0 mt-0.5" />
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                    <Rss className="h-8 w-8 mb-3 opacity-30" />
-                    <p className="text-xs">No articles yet</p>
-                    <p className="text-[10px] mt-1">
-                      Click refresh to fetch feeds
-                    </p>
-                  </div>
-                )}
-              </ScrollArea>
-            </Card>
+        <Card className="bg-card border-border overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground tracking-wide uppercase">
+              Feed
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              {filteredArticles?.length || 0} articles
+            </span>
           </div>
-
-          {/* Summary panel */}
-          <div className="lg:col-span-2">
-            <Card className="bg-card border-border overflow-hidden sticky top-16">
-              <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-                <span className="text-[11px] text-muted-foreground tracking-wide uppercase flex items-center gap-1.5">
-                  <Sparkles className="h-3 w-3" />
-                  AI Summary
-                </span>
-                {selectedArticle && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-5 w-5 p-0"
-                    onClick={() => {
-                      setSelectedArticle(null);
-                      setSummaryText(null);
-                    }}
-                    data-testid="button-close-summary"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                )}
+          <ScrollArea className="h-[calc(100vh-180px)]">
+            {isLoading || refreshMutation.isPending ? (
+              <div>
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <ArticleSkeleton key={i} />
+                ))}
               </div>
-
-              <div className="p-4 min-h-[300px]">
-                {!selectedArticle ? (
-                  <div className="flex flex-col items-center justify-center h-[300px] text-muted-foreground">
-                    <Terminal className="h-8 w-8 mb-3 opacity-20" />
-                    <p className="text-xs text-center">
-                      Select an article to get an
-                      <br />
-                      AI-powered summary
-                    </p>
-                    <p className="text-[10px] mt-2 text-muted-foreground/60 cursor-blink">
-                      awaiting input
-                    </p>
-                  </div>
-                ) : summarizeMutation.isPending && !summaryText ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-xs text-primary">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Generating summary...
+            ) : filteredArticles && filteredArticles.length > 0 ? (
+              filteredArticles.map((article) => (
+                <div
+                  key={article.id}
+                  className="p-3 border-b border-border transition-colors cursor-pointer hover:bg-accent/50"
+                  onClick={() => setReadingArticleId(article.id)}
+                  data-testid={`article-card-${article.id}`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className="mt-0.5 shrink-0">
+                      {article.category === "security" ? (
+                        <Shield className="h-3.5 w-3.5 text-yellow-500/80" />
+                      ) : (
+                        <Brain className="h-3.5 w-3.5 text-primary/80" />
+                      )}
                     </div>
-                    <Skeleton className="h-3 w-full" />
-                    <Skeleton className="h-3 w-5/6" />
-                    <Skeleton className="h-3 w-4/5" />
-                    <Skeleton className="h-3 w-full" />
-                    <Skeleton className="h-3 w-3/4" />
-                  </div>
-                ) : summarizeMutation.isError && !summaryText ? (
-                  <div className="text-xs text-destructive">
-                    Failed to generate summary. Try again.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedArticleData && (
-                      <div className="space-y-2 pb-3 border-b border-border">
-                        <h2 className="text-xs font-semibold text-foreground leading-snug">
-                          {selectedArticleData.title}
-                        </h2>
-                        <div className="flex items-center gap-2">
-                          <SourceBadge source={selectedArticleData.source} />
-                          <a
-                            href={selectedArticleData.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
-                            data-testid="link-article-source"
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-xs font-medium leading-snug text-foreground line-clamp-2">
+                        {article.title}
+                      </h3>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <SourceBadge source={article.source} />
+                        {article.publishedAt && (
+                          <>
+                            <span className="text-[10px] text-muted-foreground">
+                              ·
+                            </span>
+                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                              <Clock className="h-2.5 w-2.5" />
+                              {timeAgo(article.publishedAt)}
+                            </span>
+                          </>
+                        )}
+                        {article.hasSummary && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border-0"
                           >
-                            Read full article
-                            <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
-                        </div>
+                            summarized
+                          </Badge>
+                        )}
                       </div>
-                    )}
-                    {summaryText && (
-                      <div className="text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap space-y-1.5">
-                        {summaryText.split("\n").map((line, i) => {
-                          const trimmed = line.trim();
-                          if (!trimmed) return null;
-                          if (
-                            trimmed.startsWith("- ") ||
-                            trimmed.startsWith("• ")
-                          ) {
-                            return (
-                              <div
-                                key={i}
-                                className="flex items-start gap-2 py-0.5"
-                              >
-                                <span className="text-primary mt-px shrink-0">
-                                  ›
-                                </span>
-                                <span>{trimmed.slice(2)}</span>
-                              </div>
-                            );
-                          }
-                          return (
-                            <p key={i} className="py-0.5">
-                              {trimmed}
-                            </p>
-                          );
-                        })}
-                      </div>
-                    )}
+                      {article.snippet && (
+                        <p className="text-[11px] text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
+                          {article.snippet}
+                        </p>
+                      )}
+                    </div>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0 mt-0.5" />
                   </div>
-                )}
+                </div>
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Rss className="h-8 w-8 mb-3 opacity-30" />
+                <p className="text-xs">No articles yet</p>
+                <p className="text-[10px] mt-1">
+                  Click refresh to fetch feeds
+                </p>
               </div>
-            </Card>
-          </div>
-        </div>
+            )}
+          </ScrollArea>
+        </Card>
       </div>
 
-      {/* Footer */}
       <footer className="border-t border-border mt-8 py-4 text-center">
         <PerplexityAttribution />
       </footer>

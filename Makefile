@@ -70,6 +70,9 @@ docker-install: ## Install Docker Engine + Compose (Ubuntu/Debian)
 docker-build: ## Build the Docker image
 	$(COMPOSE) build
 
+docker-rebuild: ## Rebuild from scratch (no cache)
+	$(COMPOSE) build --no-cache
+
 docker-up: ## Start containers (detached)
 	$(COMPOSE) up -d
 

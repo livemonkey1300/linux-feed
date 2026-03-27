@@ -5,6 +5,7 @@ import { rm, readFile } from "fs/promises";
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
 const allowlist = [
+  "@extractus/article-extractor",
   "@google/generative-ai",
   "axios",
   "cors",
