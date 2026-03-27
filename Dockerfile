@@ -1,6 +1,9 @@
 # ---- Build stage ----
 FROM node:20-alpine AS builder
 
+# Native deps needed to compile better-sqlite3
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
@@ -18,11 +21,16 @@ WORKDIR /app
 
 RUN apk add --no-cache tini
 
+# Copy built output
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/drizzle.config.ts ./
 COPY --from=builder /app/shared ./shared
+
+# Reinstall only production deps (with native build tools for better-sqlite3)
+RUN apk add --no-cache python3 make g++ && \
+    npm ci --omit=dev && \
+    apk del python3 make g++
 
 # SQLite data directory
 RUN mkdir -p /app/data
