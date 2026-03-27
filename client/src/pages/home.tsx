@@ -77,11 +77,25 @@ export default function Home() {
   const [selectedArticle, setSelectedArticle] = useState<number | null>(null);
   const [summaryText, setSummaryText] = useState<string | null>(null);
 
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
   // Auto-refresh feeds on first load
   const refreshMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/feeds/refresh"),
-    onSuccess: () => {
+    mutationFn: async () => {
+      setRefreshError(null);
+      const res = await apiRequest("POST", "/api/feeds/refresh");
+      return res.json();
+    },
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/articles"] });
+      if (data.fetched === 0) {
+        setRefreshError(
+          "All feeds timed out. Check your network or try again.",
+        );
+      }
+    },
+    onError: (err: Error) => {
+      setRefreshError(err.message || "Failed to refresh feeds");
     },
   });
 
@@ -201,6 +215,23 @@ export default function Home() {
             </TabsTrigger>
           </TabsList>
         </Tabs>
+
+        {/* Error banner */}
+        {refreshError && (
+          <div className="mb-4 px-3 py-2 rounded border border-destructive/30 bg-destructive/10 text-destructive text-xs flex items-center gap-2">
+            <span>&#x26A0;</span>
+            <span>{refreshError}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-5 text-[10px] text-destructive hover:text-destructive"
+              onClick={() => refreshMutation.mutate()}
+              data-testid="button-retry"
+            >
+              Retry
+            </Button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* Article list */}

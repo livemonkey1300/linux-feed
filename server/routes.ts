@@ -4,9 +4,11 @@ import { storage } from "./storage";
 import Parser from "rss-parser";
 
 const parser = new Parser({
-  timeout: 10000,
+  timeout: 15000,
   headers: {
-    "User-Agent": "LinuxFeedAggregator/1.0",
+    "User-Agent":
+      "Mozilla/5.0 (compatible; LinuxFeedAggregator/1.0; +https://github.com/livemonkey1300/linux-feed)",
+    Accept: "application/rss+xml, application/xml, text/xml, */*",
   },
 });
 
@@ -185,42 +187,59 @@ const FEEDS = [
   },
 ];
 
-async function fetchAllFeeds() {
-  const results: Array<{
-    title: string;
-    link: string;
-    source: string;
-    category: string;
-    snippet: string | null;
-    publishedAt: string | null;
-  }> = [];
+type FeedItem = {
+  title: string;
+  link: string;
+  source: string;
+  category: string;
+  snippet: string | null;
+  publishedAt: string | null;
+};
 
-  for (const feed of FEEDS) {
-    try {
-      const parsed = await parser.parseURL(feed.url);
-      const items = (parsed.items || []).slice(0, 15);
-      for (const item of items) {
-        if (!item.title || !item.link) continue;
-        const rawSnippet =
-          item.contentSnippet || item.content || item.summary || "";
-        const snippet = rawSnippet
-          .replace(/<[^>]*>/g, "")
-          .substring(0, 300)
-          .trim();
-        results.push({
-          title: item.title.trim(),
-          link: item.link.trim(),
-          source: feed.source,
-          category: feed.category,
-          snippet: snippet || null,
-          publishedAt: item.isoDate || item.pubDate || null,
-        });
-      }
-    } catch (err) {
-      console.error(`Failed to fetch feed ${feed.source}:`, err);
+async function fetchSingleFeed(feed: (typeof FEEDS)[number]): Promise<FeedItem[]> {
+  try {
+    console.log(`Fetching ${feed.source} (${feed.url})...`);
+    const parsed = await parser.parseURL(feed.url);
+    const items = (parsed.items || []).slice(0, 15);
+    const results: FeedItem[] = [];
+    for (const item of items) {
+      if (!item.title || !item.link) continue;
+      const rawSnippet =
+        item.contentSnippet || item.content || item.summary || "";
+      const snippet = rawSnippet
+        .replace(/<[^>]*>/g, "")
+        .substring(0, 300)
+        .trim();
+      results.push({
+        title: item.title.trim(),
+        link: item.link.trim(),
+        source: feed.source,
+        category: feed.category,
+        snippet: snippet || null,
+        publishedAt: item.isoDate || item.pubDate || null,
+      });
+    }
+    console.log(`  ✓ ${feed.source}: ${results.length} articles`);
+    return results;
+  } catch (err: any) {
+    console.error(`  ✗ ${feed.source} failed: ${err.message || err}`);
+    return [];
+  }
+}
+
+async function fetchAllFeeds() {
+  console.log(`Refreshing ${FEEDS.length} feeds in parallel...`);
+  // Fetch all feeds in parallel — one slow feed won't block the others
+  const feedResults = await Promise.allSettled(
+    FEEDS.map((feed) => fetchSingleFeed(feed)),
+  );
+  const results: FeedItem[] = [];
+  for (const result of feedResults) {
+    if (result.status === "fulfilled") {
+      results.push(...result.value);
     }
   }
-
+  console.log(`Total: ${results.length} articles from ${FEEDS.length} feeds`);
   return results;
 }
 
