@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   BookOpen,
   Swords,
   Wrench,
+  MonitorSmartphone,
   X,
 } from "lucide-react";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -305,7 +307,9 @@ function ArticleReader({
                         ? "bg-orange-400/10 text-orange-400"
                         : articleMeta.category === "devops"
                           ? "bg-blue-400/10 text-blue-400"
-                          : "bg-primary/10 text-primary"
+                          : articleMeta.category === "linux"
+                            ? "bg-amber-400/10 text-amber-400"
+                            : "bg-primary/10 text-primary"
                   }`}
                 >
                   {articleMeta.category === "llm" ? "ai" : articleMeta.category}
@@ -358,6 +362,7 @@ function ArticleReader({
 
 // ── Main Page ──
 export default function Home() {
+  const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<string>("all");
   const [readingArticleId, setReadingArticleId] = useState<number | null>(
     null,
@@ -443,19 +448,31 @@ export default function Home() {
               security + devops + military + ai
             </span>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => refreshMutation.mutate()}
-            disabled={refreshMutation.isPending}
-            data-testid="button-refresh"
-            className="text-xs gap-1.5"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`}
-            />
-            <span className="hidden sm:inline">Refresh</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate("/assistant")}
+              className="text-xs gap-1.5"
+              data-testid="button-assistant"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">AI Assistant</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => refreshMutation.mutate()}
+              disabled={refreshMutation.isPending}
+              data-testid="button-refresh"
+              className="text-xs gap-1.5"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`}
+              />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -501,6 +518,14 @@ export default function Home() {
             >
               <Wrench className="h-3 w-3 mr-1.5" />
               DevOps
+            </TabsTrigger>
+            <TabsTrigger
+              value="linux"
+              className="text-xs h-6 px-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              data-testid="tab-linux"
+            >
+              <MonitorSmartphone className="h-3 w-3 mr-1.5" />
+              Linux
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -553,6 +578,8 @@ export default function Home() {
                         <Swords className="h-3.5 w-3.5 text-orange-400/80" />
                       ) : article.category === "devops" ? (
                         <Wrench className="h-3.5 w-3.5 text-blue-400/80" />
+                      ) : article.category === "linux" ? (
+                        <MonitorSmartphone className="h-3.5 w-3.5 text-amber-400/80" />
                       ) : (
                         <Brain className="h-3.5 w-3.5 text-primary/80" />
                       )}

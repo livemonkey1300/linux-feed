@@ -245,6 +245,33 @@ const FEEDS = [
     source: "Azure DevOps Blog",
     category: "devops",
   },
+
+  // ── Linux Tips & Tutorials ──
+  {
+    url: "https://www.linuxtoday.com/feed/",
+    source: "Linux Today",
+    category: "linux",
+  },
+  {
+    url: "https://linuxhandbook.com/feed/",
+    source: "Linux Handbook",
+    category: "linux",
+  },
+  {
+    url: "https://itsfoss.com/feed/",
+    source: "It's FOSS",
+    category: "linux",
+  },
+  {
+    url: "https://www.phoronix.com/rss.php",
+    source: "Phoronix",
+    category: "linux",
+  },
+  {
+    url: "https://www.tecmint.com/feed/",
+    source: "Tecmint",
+    category: "linux",
+  },
 ];
 
 type FeedItem = {
@@ -442,6 +469,133 @@ Content: ${article.snippet || "No preview available — summarize based on the t
         url: article.link,
         source: article.source,
       });
+    }
+  });
+
+  // ── DevOps AI Assistant ──
+  app.post("/api/assistant/generate", async (req, res) => {
+    const { template, userInput } = req.body;
+    if (!template || !userInput) {
+      return res.status(400).json({ error: "template and userInput are required" });
+    }
+
+    const TEMPLATES: Record<string, string> = {
+      dockerfile: `You are an expert DevOps engineer. Generate a production-ready, multi-stage Dockerfile based on the user's description. Include:
+- Multi-stage build where appropriate
+- Security best practices (non-root user, minimal base image)
+- Proper layer caching
+- Health check
+- Labels and comments
+
+Return ONLY the Dockerfile content as a code block. No explanation outside the code block.
+
+User request: `,
+
+      compose: `You are an expert DevOps engineer. Generate a production-ready docker-compose.yml based on the user's description. Include:
+- Named volumes for persistence
+- Health checks
+- Restart policies
+- Network configuration
+- Environment variable placeholders
+- Comments explaining each service
+
+Return ONLY the docker-compose.yml content as a code block. No explanation outside the code block.
+
+User request: `,
+
+      helm: `You are an expert Kubernetes/Helm engineer. Convert the user's description (or Docker Compose setup) into a set of Helm chart templates. Generate:
+- Chart.yaml
+- values.yaml
+- templates/deployment.yaml
+- templates/service.yaml
+- templates/configmap.yaml (if needed)
+- templates/ingress.yaml (if needed)
+
+Separate each file with a comment header like: # --- FILE: templates/deployment.yaml ---
+Use Helm best practices (templating, values references, labels).
+
+Return ONLY the file contents as code blocks. No explanation outside.
+
+User request: `,
+
+      scraper_python: `You are an expert developer. Write a production-quality web scraper in Python using requests + BeautifulSoup. Include:
+- Proper error handling and retries
+- Rate limiting / polite delays
+- User-Agent header
+- JSON output
+- CLI arguments (URL, output file)
+- Type hints
+- Docstrings
+
+Return ONLY the Python code as a code block.
+
+User request: `,
+
+      scraper_go: `You are an expert developer. Write a production-quality web scraper in Go using colly. Include:
+- Proper error handling
+- Rate limiting
+- JSON output
+- CLI flags (URL, output file)
+- Clean struct definitions
+- Comments
+
+Return ONLY the Go code as a code block.
+
+User request: `,
+
+      scraper_node: `You are an expert developer. Write a production-quality web scraper in Node.js (TypeScript) using cheerio + node-fetch. Include:
+- Proper error handling and retries
+- Rate limiting
+- JSON output
+- CLI arguments (URL, output file)
+- TypeScript types/interfaces
+- ESM imports
+
+Return ONLY the TypeScript code as a code block.
+
+User request: `,
+
+      scraper_bash: `You are an expert developer. Write a production-quality web scraper as a Bash script using curl + grep/sed/awk or pup/jq. Include:
+- Proper error handling (set -euo pipefail)
+- User-Agent header
+- Rate limiting (sleep between requests)
+- JSON output via jq
+- CLI arguments
+- Usage function
+- Comments
+
+Return ONLY the Bash script as a code block.
+
+User request: `,
+
+      pipeline: `You are an expert CI/CD engineer. Generate a CI/CD pipeline configuration based on the user's description. Default to GitLab CI (.gitlab-ci.yml) unless the user specifies otherwise. Include:
+- Build, test, lint, security scan stages
+- Docker image build and push
+- Multi-environment deployment (staging, production)
+- Caching
+- Artifacts
+- Comments explaining each stage
+
+Return ONLY the pipeline YAML as a code block.
+
+User request: `,
+    };
+
+    const systemPrompt = TEMPLATES[template];
+    if (!systemPrompt) {
+      return res.status(400).json({
+        error: `Unknown template: ${template}. Available: ${Object.keys(TEMPLATES).join(", ")}`,
+      });
+    }
+
+    try {
+      const fullPrompt = systemPrompt + userInput;
+      const result = await summarizeWithLLM(fullPrompt);
+      res.json({ result });
+    } catch (err) {
+      console.error("Assistant error:", err);
+      const message = err instanceof Error ? err.message : "Generation failed";
+      res.status(422).json({ error: message });
     }
   });
 
