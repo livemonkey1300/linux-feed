@@ -37,10 +37,25 @@ sqlite.exec(`
     summary TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS custom_feeds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'personal',
+    created_at TEXT NOT NULL
+  );
 `);
 console.log(`Database initialized at ${dbPath}`);
 
 export const db = drizzle(sqlite);
+
+export interface CustomFeed {
+  id: number;
+  url: string;
+  name: string;
+  category: string;
+  created_at: string;
+}
 
 export interface IStorage {
   getArticles(): Article[];
@@ -49,6 +64,9 @@ export interface IStorage {
   upsertArticle(article: InsertArticle): Article;
   getSummaryByArticleId(articleId: number): Summary | undefined;
   createSummary(summary: InsertSummary): Summary;
+  getCustomFeeds(): CustomFeed[];
+  addCustomFeed(url: string, name: string, category: string): CustomFeed;
+  removeCustomFeed(id: number): void;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -90,6 +108,24 @@ export class DatabaseStorage implements IStorage {
 
   createSummary(summary: InsertSummary): Summary {
     return db.insert(summaries).values(summary).returning().get();
+  }
+
+  getCustomFeeds(): CustomFeed[] {
+    return sqlite
+      .prepare("SELECT * FROM custom_feeds ORDER BY created_at DESC")
+      .all() as CustomFeed[];
+  }
+
+  addCustomFeed(url: string, name: string, category: string): CustomFeed {
+    return sqlite
+      .prepare(
+        "INSERT INTO custom_feeds (url, name, category, created_at) VALUES (?, ?, ?, ?) RETURNING *",
+      )
+      .get(url, name, category, new Date().toISOString()) as CustomFeed;
+  }
+
+  removeCustomFeed(id: number): void {
+    sqlite.prepare("DELETE FROM custom_feeds WHERE id = ?").run(id);
   }
 }
 

@@ -24,8 +24,13 @@ import {
   Swords,
   Wrench,
   MonitorSmartphone,
+  User,
+  Plus,
+  Trash2,
+  Settings,
   X,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 
 interface Article {
@@ -309,7 +314,9 @@ function ArticleReader({
                           ? "bg-blue-400/10 text-blue-400"
                           : articleMeta.category === "linux"
                             ? "bg-amber-400/10 text-amber-400"
-                            : "bg-primary/10 text-primary"
+                            : articleMeta.category === "personal"
+                              ? "bg-rose-400/10 text-rose-400"
+                              : "bg-primary/10 text-primary"
                   }`}
                 >
                   {articleMeta.category === "llm" ? "ai" : articleMeta.category}
@@ -360,6 +367,176 @@ function ArticleReader({
   );
 }
 
+// ── Feed Manager Component ──
+interface CustomFeed {
+  id: number;
+  url: string;
+  name: string;
+  category: string;
+  created_at: string;
+}
+
+function FeedManager({ onClose }: { onClose: () => void }) {
+  const [newUrl, setNewUrl] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newCategory, setNewCategory] = useState("personal");
+
+  const { data: feeds, isLoading } = useQuery<CustomFeed[]>({
+    queryKey: ["/api/feeds/custom"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/feeds/custom");
+      return res.json();
+    },
+  });
+
+  const addFeedMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/feeds/custom", {
+        url: newUrl,
+        name: newName,
+        category: newCategory,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setNewUrl("");
+      setNewName("");
+      queryClient.invalidateQueries({ queryKey: ["/api/feeds/custom"] });
+    },
+  });
+
+  const removeFeedMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/feeds/custom/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/feeds/custom"] });
+    },
+  });
+
+  return (
+    <Card className="bg-card border-border overflow-hidden mb-4">
+      <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+        <span className="text-[11px] text-muted-foreground tracking-wide uppercase flex items-center gap-1.5">
+          <Settings className="h-3 w-3" />
+          Manage Personal Feeds
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 w-5 p-0"
+          onClick={onClose}
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+      <div className="p-4 space-y-4">
+        {/* Add new feed */}
+        <div className="space-y-2">
+          <span className="text-[10px] text-muted-foreground tracking-widest uppercase">
+            Add RSS Feed
+          </span>
+          <div className="flex gap-2">
+            <Input
+              value={newUrl}
+              onChange={(e) => setNewUrl(e.target.value)}
+              placeholder="https://example.com/feed.xml"
+              className="text-xs h-8 bg-background"
+              data-testid="input-feed-url"
+            />
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Feed name"
+              className="text-xs h-8 bg-background w-40"
+              data-testid="input-feed-name"
+            />
+            <select
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              className="text-xs h-8 bg-background border border-border rounded px-2 text-foreground"
+            >
+              <option value="personal">Personal</option>
+              <option value="security">Security</option>
+              <option value="llm">AI</option>
+              <option value="military">Military</option>
+              <option value="devops">DevOps</option>
+              <option value="linux">Linux</option>
+            </select>
+            <Button
+              size="sm"
+              className="h-8 text-xs gap-1"
+              disabled={!newUrl.trim() || !newName.trim() || addFeedMutation.isPending}
+              onClick={() => addFeedMutation.mutate()}
+              data-testid="button-add-feed"
+            >
+              <Plus className="h-3 w-3" />
+              Add
+            </Button>
+          </div>
+          {addFeedMutation.isError && (
+            <p className="text-[10px] text-destructive">
+              {addFeedMutation.error?.message || "Failed to add feed"}
+            </p>
+          )}
+        </div>
+
+        {/* Feed list */}
+        <div className="space-y-1">
+          <span className="text-[10px] text-muted-foreground tracking-widest uppercase">
+            Your Feeds ({feeds?.length || 0})
+          </span>
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-full" />
+              <Skeleton className="h-6 w-full" />
+            </div>
+          ) : feeds && feeds.length > 0 ? (
+            <div className="space-y-1">
+              {feeds.map((feed) => (
+                <div
+                  key={feed.id}
+                  className="flex items-center justify-between px-2 py-1.5 rounded bg-muted/30 border border-border"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Rss className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-foreground truncate">
+                      {feed.name}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className="text-[9px] h-4 px-1.5 border-0 shrink-0"
+                    >
+                      {feed.category}
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeFeedMutation.mutate(feed.id)}
+                    data-testid={`button-remove-feed-${feed.id}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[10px] text-muted-foreground py-2">
+              No custom feeds yet. Add an RSS feed URL above.
+            </p>
+          )}
+        </div>
+
+        <p className="text-[10px] text-muted-foreground italic">
+          After adding feeds, click Refresh to fetch articles. Custom feeds are included in the "Personal" tab and "All".
+        </p>
+      </div>
+    </Card>
+  );
+}
+
 // ── Main Page ──
 export default function Home() {
   const [, navigate] = useLocation();
@@ -367,6 +544,7 @@ export default function Home() {
   const [readingArticleId, setReadingArticleId] = useState<number | null>(
     null,
   );
+  const [showFeedManager, setShowFeedManager] = useState(false);
 
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
@@ -527,8 +705,32 @@ export default function Home() {
               <MonitorSmartphone className="h-3 w-3 mr-1.5" />
               Linux
             </TabsTrigger>
+            <TabsTrigger
+              value="personal"
+              className="text-xs h-6 px-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              data-testid="tab-personal"
+            >
+              <User className="h-3 w-3 mr-1.5" />
+              Personal
+            </TabsTrigger>
           </TabsList>
+          {activeTab === "personal" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowFeedManager(!showFeedManager)}
+              className="text-xs gap-1.5 ml-2"
+              data-testid="button-manage-feeds"
+            >
+              <Settings className="h-3 w-3" />
+              Manage
+            </Button>
+          )}
         </Tabs>
+
+        {showFeedManager && activeTab === "personal" && (
+          <FeedManager onClose={() => setShowFeedManager(false)} />
+        )}
 
         {refreshError && (
           <div className="mb-4 px-3 py-2 rounded border border-destructive/30 bg-destructive/10 text-destructive text-xs flex items-center gap-2">
@@ -580,6 +782,8 @@ export default function Home() {
                         <Wrench className="h-3.5 w-3.5 text-blue-400/80" />
                       ) : article.category === "linux" ? (
                         <MonitorSmartphone className="h-3.5 w-3.5 text-amber-400/80" />
+                      ) : article.category === "personal" ? (
+                        <User className="h-3.5 w-3.5 text-rose-400/80" />
                       ) : (
                         <Brain className="h-3.5 w-3.5 text-primary/80" />
                       )}

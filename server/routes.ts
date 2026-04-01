@@ -183,7 +183,7 @@ function detectProvider(): {
       apiKey: process.env.GEMINI_API_KEY,
       buildBody: (prompt) => ({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 1024 },
+        generationConfig: { maxOutputTokens: 4096 },
       }),
       extractText: (json) =>
         json?.candidates?.[0]?.content?.parts?.[0]?.text ||
@@ -446,21 +446,7 @@ async function fetchSingleFeed(feed: (typeof FEEDS)[number]): Promise<FeedItem[]
   }
 }
 
-async function fetchAllFeeds() {
-  console.log(`Refreshing ${FEEDS.length} feeds in parallel...`);
-  // Fetch all feeds in parallel — one slow feed won't block the others
-  const feedResults = await Promise.allSettled(
-    FEEDS.map((feed) => fetchSingleFeed(feed)),
-  );
-  const results: FeedItem[] = [];
-  for (const result of feedResults) {
-    if (result.status === "fulfilled") {
-      results.push(...result.value);
-    }
-  }
-  console.log(`Total: ${results.length} articles from ${FEEDS.length} feeds`);
-  return results;
-}
+
 
 export async function registerRoutes(
   httpServer: Server,
@@ -505,10 +491,57 @@ export async function registerRoutes(
     }
   });
 
-  // Fetch and store articles from RSS feeds
+  // ── Custom Feeds Management ──
+  app.get("/api/feeds/custom", (_req, res) => {
+    const feeds = storage.getCustomFeeds();
+    res.json(feeds);
+  });
+
+  app.post("/api/feeds/custom", (req, res) => {
+    const { url, name, category } = req.body;
+    if (!url || !name) {
+      return res.status(400).json({ error: "url and name are required" });
+    }
+    try {
+      const feed = storage.addCustomFeed(url, name, category || "personal");
+      res.json(feed);
+    } catch (err: any) {
+      if (err.message?.includes("UNIQUE")) {
+        return res.status(409).json({ error: "Feed URL already exists" });
+      }
+      res.status(500).json({ error: "Failed to add feed" });
+    }
+  });
+
+  app.delete("/api/feeds/custom/:id", (req, res) => {
+    const id = parseInt(req.params.id);
+    storage.removeCustomFeed(id);
+    res.json({ success: true });
+  });
+
+  // Fetch and store articles from RSS feeds (built-in + custom)
   app.post("/api/feeds/refresh", async (_req, res) => {
     try {
-      const items = await fetchAllFeeds();
+      // Merge built-in feeds with user's custom feeds
+      const customFeeds = storage.getCustomFeeds().map((f) => ({
+        url: f.url,
+        source: f.name,
+        category: f.category,
+      }));
+      const allFeeds = [...FEEDS, ...customFeeds];
+
+      console.log(`Refreshing ${allFeeds.length} feeds (${FEEDS.length} built-in + ${customFeeds.length} custom)...`);
+      const feedResults = await Promise.allSettled(
+        allFeeds.map((feed) => fetchSingleFeed(feed)),
+      );
+      const items: FeedItem[] = [];
+      for (const result of feedResults) {
+        if (result.status === "fulfilled") {
+          items.push(...result.value);
+        }
+      }
+      console.log(`Total: ${items.length} articles`);
+
       let newCount = 0;
       for (const item of items) {
         const article = storage.upsertArticle({
@@ -527,6 +560,15 @@ export async function registerRoutes(
       console.error("Feed refresh error:", err);
       res.status(422).json({ error: "Failed to refresh feeds" });
     }
+  });
+
+  // Get available feed categories (built-in + custom)
+  app.get("/api/feeds/categories", (_req, res) => {
+    const builtInCategories = [...new Set(FEEDS.map((f) => f.category))];
+    const customFeeds = storage.getCustomFeeds();
+    const customCategories = [...new Set(customFeeds.map((f) => f.category))];
+    const allCategories = [...new Set([...builtInCategories, ...customCategories])];
+    res.json(allCategories);
   });
 
   // Get all articles (optionally filtered by category)
