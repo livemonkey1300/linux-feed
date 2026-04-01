@@ -1,5 +1,6 @@
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,9 @@ import {
   Github,
   Server,
   Network,
+  ShoppingCart,
+  Search,
+  Tag,
 } from "lucide-react";
 
 interface Template {
@@ -178,6 +182,19 @@ const TEMPLATE_GROUPS = [
         color: "text-red-500",
         placeholder: "Harden K8s deployment: non-root, seccomp, and network policy",
         description: "Container and Kubernetes security hardening",
+      },
+    ],
+  },
+  {
+    title: "Shopping Assistant",
+    templates: [
+      {
+        id: "shopping_expert",
+        label: "Shopping Expert",
+        icon: ShoppingCart,
+        color: "text-rose-400",
+        placeholder: "Find a second-hand MacBook Pro 14 M3 at the best price",
+        description: "Deal hunter for Kijiji, FB Marketplace, and more",
       },
     ],
   },
@@ -560,9 +577,9 @@ export default function Assistant({
                     </div>
                   </div>
                 ) : result ? (
-                  <pre className="p-4 text-[12px] font-mono text-foreground/90 whitespace-pre-wrap leading-relaxed overflow-x-auto">
-                    {result}
-                  </pre>
+                  <div className="p-4 prose prose-invert prose-sm max-w-none prose-pre:p-0 prose-pre:bg-transparent">
+                    <ReactMarkdown>{result}</ReactMarkdown>
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[400px] text-muted-foreground">
                     <Terminal className="h-8 w-8 mb-3 opacity-20" />

@@ -134,6 +134,7 @@ User request: `,
       gitlab_expert: ``,
       github_actions_expert: ``,
       container_security: ``,
+      shopping_expert: ``,
     }
   };
 
