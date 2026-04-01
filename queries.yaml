@@ -1,0 +1,41 @@
+# ──────────────────────────────────────────────
+#  API Queries Configuration
+#  Use this to test your prompts against the API
+# ──────────────────────────────────────────────
+
+# To run these queries, use:
+# npm run query
+
+queries:
+  - name: "Status Check"
+    path: "/api/status"
+    method: "GET"
+
+  - name: "Summarize Article 1"
+    path: "/api/articles/1/summarize"
+    method: "POST"
+    description: "Tests the summarization.system prompt"
+
+  - name: "Generate Dockerfile"
+    path: "/api/assistant/generate"
+    method: "POST"
+    body:
+      template: "dockerfile"
+      userInput: "A production-ready Node.js 22 app with alpine base"
+    description: "Tests the assistant.dockerfile prompt"
+
+  - name: "Generate Go Scraper"
+    path: "/api/assistant/generate"
+    method: "POST"
+    body:
+      template: "scraper_go"
+      userInput: "Scrape the latest CVEs from NIST website"
+    description: "Tests the assistant.scraper_go prompt"
+
+  - name: "Generate GitLab Pipeline"
+    path: "/api/assistant/generate"
+    method: "POST"
+    body:
+      template: "pipeline"
+      userInput: "Python app with ruff linting and pytest"
+    description: "Tests the assistant.pipeline prompt"

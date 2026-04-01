@@ -3,6 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import Parser from "rss-parser";
 import { extract } from "@extractus/article-extractor";
+import fs from "fs";
+import path from "path";
+import yaml from "js-yaml";
 
 const parser = new Parser({
   timeout: 15000,
@@ -15,21 +18,149 @@ const parser = new Parser({
 
 // ──────────────────────────────────────────────
 //  Multi-provider LLM summarization
-//  Set ONE of these env vars:
-//    GEMINI_API_KEY      — Google Gemini (free tier available)
-//    PERPLEXITY_API_KEY  — Perplexity (OpenAI-compatible)
-//    OPENAI_API_KEY      — OpenAI / GitHub Copilot
-//    ANTHROPIC_API_KEY   — Anthropic Claude
 // ──────────────────────────────────────────────
 
-const SUMMARY_PROMPT = `You are a technical news summarizer for Linux sysadmins and DevOps engineers.
+function loadPrompts() {
+  const defaultPrompts = {
+    summarization: {
+      system: `You are a technical news summarizer for Linux sysadmins and DevOps engineers.
 
 Summarize this article in 3-5 bullet points. Be concise and technical. Focus on:
 - What happened / what is this about
 - Why it matters for Linux admins or AI/ML practitioners
 - Any action items or key takeaways
 
-Return ONLY the bullet points as markdown, no intro text. Each bullet should be 1-2 sentences max.`;
+Return ONLY the bullet points as markdown, no intro text. Each bullet should be 1-2 sentences max.`
+    },
+    assistant: {
+      dockerfile: `You are an expert DevOps engineer. Generate a production-ready, multi-stage Dockerfile based on the user's description. Include:
+- Multi-stage build where appropriate
+- Security best practices (non-root user, minimal base image)
+- Proper layer caching
+- Health check
+- Labels and comments
+
+Return ONLY the Dockerfile content as a code block. No explanation outside the code block.
+
+User request: `,
+      compose: `You are an expert DevOps engineer. Generate a production-ready docker-compose.yml based on the user's description. Include:
+- Named volumes for persistence
+- Health checks
+- Restart policies
+- Network configuration
+- Environment variable placeholders
+- Comments explaining each service
+
+Return ONLY the docker-compose.yml content as a code block. No explanation outside the code block.
+
+User request: `,
+      helm: `You are an expert Kubernetes/Helm engineer. Convert the user's description (or Docker Compose setup) into a set of Helm chart templates. Generate:
+- Chart.yaml
+- values.yaml
+- templates/deployment.yaml
+- templates/service.yaml
+- templates/configmap.yaml (if needed)
+- templates/ingress.yaml (if needed)
+
+Separate each file with a comment header like: # --- FILE: templates/deployment.yaml ---
+Use Helm best practices (templating, values references, labels).
+
+Return ONLY the file contents as code blocks. No explanation outside.
+
+User request: `,
+      scraper_python: `You are an expert developer. Write a production-quality web scraper in Python using requests + BeautifulSoup. Include:
+- Proper error handling and retries
+- Rate limiting / polite delays
+- User-Agent header
+- JSON output
+- CLI arguments (URL, output file)
+- Type hints
+- Docstrings
+
+Return ONLY the Python code as a code block.
+
+User request: `,
+      scraper_go: `You are an expert developer. Write a production-quality web scraper in Go using colly. Include:
+- Proper error handling
+- Rate limiting
+- JSON output
+- CLI flags (URL, output file)
+- Clean struct definitions
+- Comments
+
+Return ONLY the Go code as a code block.
+
+User request: `,
+      scraper_node: `You are an expert developer. Write a production-quality web scraper in Node.js (TypeScript) using cheerio + node-fetch. Include:
+- Proper error handling and retries
+- Rate limiting
+- JSON output
+- CLI arguments (URL, output file)
+- TypeScript types/interfaces
+- ESM imports
+
+Return ONLY the TypeScript code as a code block.
+
+User request: `,
+      scraper_bash: `You are an expert developer. Write a production-quality web scraper as a Bash script using curl + grep/sed/awk or pup/jq. Include:
+- Proper error handling (set -euo pipefail)
+- User-Agent header
+- Rate limiting (sleep between requests)
+- JSON output via jq
+- CLI arguments
+- Usage function
+- Comments
+
+Return ONLY the Bash script as a code block.
+
+User request: `,
+      pipeline: `You are an expert CI/CD engineer. Generate a CI/CD pipeline configuration based on the user's description. Default to GitLab CI (.gitlab-ci.yml) unless the user specifies otherwise. Include:
+- Build, test, lint, security scan stages
+- Docker image build and push
+- Multi-environment deployment (staging, production)
+- Caching
+- Artifacts
+- Comments explaining each stage
+
+Return ONLY the pipeline YAML as a code block.
+
+User request: `,
+      terraform: ``,
+      ansible: ``,
+      sql: ``,
+      aws_architect: ``,
+      gcp_architect: ``,
+      azure_architect: ``,
+      gitlab_expert: ``,
+      github_actions_expert: ``,
+      container_security: ``,
+    }
+  };
+
+  try {
+    const promptsPath = path.join(process.cwd(), "prompts.yaml");
+    if (fs.existsSync(promptsPath)) {
+      const fileContents = fs.readFileSync(promptsPath, "utf8");
+      const loaded = yaml.load(fileContents) as any;
+      console.log(`✓ Loaded prompts from ${promptsPath}`);
+      console.log(`  Assistant keys: ${Object.keys(loaded?.assistant || {}).join(", ")}`);
+      return {
+        summarization: {
+          system: loaded?.summarization?.system || defaultPrompts.summarization.system
+        },
+        assistant: {
+          ...defaultPrompts.assistant,
+          ...loaded?.assistant
+        }
+      };
+    } else {
+      console.log(`✗ prompts.yaml NOT FOUND at ${promptsPath}`);
+    }
+  } catch (err) {
+    console.error("✗ Error loading prompts.yaml, using defaults:", err);
+  }
+  return defaultPrompts;
+}
 
 function detectProvider(): {
   name: string;
@@ -344,6 +475,35 @@ export async function registerRoutes(
     }
   });
 
+  // Get prompts from prompts.yaml
+  app.get("/api/prompts", (_req, res) => {
+    try {
+      const prompts = loadPrompts();
+      res.json(prompts);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to load prompts" });
+    }
+  });
+
+  // Save prompts to prompts.yaml
+  app.post("/api/prompts", async (req, res) => {
+    try {
+      const newPrompts = req.body;
+      const promptsPath = path.join(process.cwd(), "prompts.yaml");
+      const yamlContent = yaml.dump(newPrompts, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true,
+      });
+      fs.writeFileSync(promptsPath, yamlContent, "utf8");
+      console.log("✓ Updated prompts.yaml from UI");
+      res.json({ success: true });
+    } catch (err) {
+      console.error("✗ Failed to save prompts:", err);
+      res.status(500).json({ error: "Failed to save prompts" });
+    }
+  });
+
   // Fetch and store articles from RSS feeds
   app.post("/api/feeds/refresh", async (_req, res) => {
     try {
@@ -402,7 +562,8 @@ export async function registerRoutes(
     }
 
     try {
-      const prompt = `${SUMMARY_PROMPT}
+      const prompts = loadPrompts();
+      const prompt = `${prompts.summarization.system}
 
 Article title: ${article.title}
 Source: ${article.source}
@@ -479,112 +640,11 @@ Content: ${article.snippet || "No preview available — summarize based on the t
       return res.status(400).json({ error: "template and userInput are required" });
     }
 
-    const TEMPLATES: Record<string, string> = {
-      dockerfile: `You are an expert DevOps engineer. Generate a production-ready, multi-stage Dockerfile based on the user's description. Include:
-- Multi-stage build where appropriate
-- Security best practices (non-root user, minimal base image)
-- Proper layer caching
-- Health check
-- Labels and comments
-
-Return ONLY the Dockerfile content as a code block. No explanation outside the code block.
-
-User request: `,
-
-      compose: `You are an expert DevOps engineer. Generate a production-ready docker-compose.yml based on the user's description. Include:
-- Named volumes for persistence
-- Health checks
-- Restart policies
-- Network configuration
-- Environment variable placeholders
-- Comments explaining each service
-
-Return ONLY the docker-compose.yml content as a code block. No explanation outside the code block.
-
-User request: `,
-
-      helm: `You are an expert Kubernetes/Helm engineer. Convert the user's description (or Docker Compose setup) into a set of Helm chart templates. Generate:
-- Chart.yaml
-- values.yaml
-- templates/deployment.yaml
-- templates/service.yaml
-- templates/configmap.yaml (if needed)
-- templates/ingress.yaml (if needed)
-
-Separate each file with a comment header like: # --- FILE: templates/deployment.yaml ---
-Use Helm best practices (templating, values references, labels).
-
-Return ONLY the file contents as code blocks. No explanation outside.
-
-User request: `,
-
-      scraper_python: `You are an expert developer. Write a production-quality web scraper in Python using requests + BeautifulSoup. Include:
-- Proper error handling and retries
-- Rate limiting / polite delays
-- User-Agent header
-- JSON output
-- CLI arguments (URL, output file)
-- Type hints
-- Docstrings
-
-Return ONLY the Python code as a code block.
-
-User request: `,
-
-      scraper_go: `You are an expert developer. Write a production-quality web scraper in Go using colly. Include:
-- Proper error handling
-- Rate limiting
-- JSON output
-- CLI flags (URL, output file)
-- Clean struct definitions
-- Comments
-
-Return ONLY the Go code as a code block.
-
-User request: `,
-
-      scraper_node: `You are an expert developer. Write a production-quality web scraper in Node.js (TypeScript) using cheerio + node-fetch. Include:
-- Proper error handling and retries
-- Rate limiting
-- JSON output
-- CLI arguments (URL, output file)
-- TypeScript types/interfaces
-- ESM imports
-
-Return ONLY the TypeScript code as a code block.
-
-User request: `,
-
-      scraper_bash: `You are an expert developer. Write a production-quality web scraper as a Bash script using curl + grep/sed/awk or pup/jq. Include:
-- Proper error handling (set -euo pipefail)
-- User-Agent header
-- Rate limiting (sleep between requests)
-- JSON output via jq
-- CLI arguments
-- Usage function
-- Comments
-
-Return ONLY the Bash script as a code block.
-
-User request: `,
-
-      pipeline: `You are an expert CI/CD engineer. Generate a CI/CD pipeline configuration based on the user's description. Default to GitLab CI (.gitlab-ci.yml) unless the user specifies otherwise. Include:
-- Build, test, lint, security scan stages
-- Docker image build and push
-- Multi-environment deployment (staging, production)
-- Caching
-- Artifacts
-- Comments explaining each stage
-
-Return ONLY the pipeline YAML as a code block.
-
-User request: `,
-    };
-
-    const systemPrompt = TEMPLATES[template];
+    const prompts = loadPrompts();
+    const systemPrompt = (prompts.assistant as Record<string, string>)[template];
     if (!systemPrompt) {
       return res.status(400).json({
-        error: `Unknown template: ${template}. Available: ${Object.keys(TEMPLATES).join(", ")}`,
+        error: `Unknown template: ${template}. Available: ${Object.keys(prompts.assistant).join(", ")}`,
       });
     }
 
@@ -593,6 +653,7 @@ User request: `,
       const result = await summarizeWithLLM(fullPrompt);
       res.json({ result });
     } catch (err) {
+
       console.error("Assistant error:", err);
       const message = err instanceof Error ? err.message : "Generation failed";
       res.status(422).json({ error: message });
